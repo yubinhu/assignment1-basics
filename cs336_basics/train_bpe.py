@@ -1,6 +1,21 @@
 import os 
 import regex as re
 from typing import BinaryIO
+import multiprocessing as mp
+import json
+from pathlib import Path
+
+def save_vocab(path, vocab):
+    serialized = [vocab[token_id].hex() for token_id in range(len(vocab))]
+    Path(path).write_text(json.dumps(serialized), encoding="utf-8")
+
+
+def load_vocab(path):
+    serialized = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {
+        token_id: bytes.fromhex(token)
+        for token_id, token in enumerate(serialized)
+    }
 
 def find_chunk_boundaries(
         file: BinaryIO,
@@ -53,26 +68,39 @@ def train_bpe(
     vocab_size: int,
     special_tokens: list[str],
 ):
-    # all_pre_tokens : dict[str, tuple[list[bytes], int]] = {}
-    # with open(input_path, "rb") as f:
-    #     num_processes = 4
-    #     boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+    num_processes = 8
+    
+    with open(input_path, "rb") as f:
+        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+    with mp.Pool(processes=num_processes) as pool:
+        tasks = [(input_path, special_tokens, boundary) for boundary in zip(boundaries[:-1], boundaries[1:])]
+        chunk_pre_tokens = pool.starmap(
+            split_pre_tokens, tasks
+        )
 
-    #     # The following is a serial implementation, but you can parallelize this
-    #     # by sending each start/end pair to a set of processes.
-    #     for start, end in zip(boundaries[:-1], boundaries[1:]):
-    #         f.seek(start)
-    #         chunk = f.read(end - start).decode("utf-8", errors="ignore")
-    #         # Run pre-tokenization on your chunk and store the counts for each pre-token
-    with open(input_path, "r") as f:
-        corpus = f.read(-1)
-        pre_tokens = split_pre_tokens(corpus, special_tokens)
-    return bpe_from_pre_tokens(pre_tokens, special_tokens, vocab_size)
+    # Merge the pre-token counts from all chunks
+    merged_pre_tokens : dict[str, tuple[list[bytes], int]] = {}
+    for pre_tokens in chunk_pre_tokens:
+        for pre_token, (bl, ct) in pre_tokens.items():
+            if pre_token in merged_pre_tokens:
+                merged_bl, merged_ct = merged_pre_tokens[pre_token]
+                merged_pre_tokens[pre_token] = (bl, merged_ct + ct)
+            else:
+                merged_pre_tokens[pre_token] = (bl, ct)
+    
+    return bpe_from_pre_tokens(merged_pre_tokens, special_tokens, vocab_size)
 
 def split_pre_tokens(
-    corpus: str, 
+    input_path: str | os.PathLike, 
     special_tokens: list[str],
+    boundary: tuple[int, int] | None = None,
 ) -> dict[str, tuple[list[bytes], int]]:
+    with open(input_path, "rb") as f:
+        if boundary:
+            f.seek(boundary[0])
+            corpus = f.read(boundary[1] - boundary[0]).decode("utf-8", errors="ignore")
+        else:
+            corpus = f.read().decode("utf-8", errors="ignore")
     pre_tokens : dict[str, tuple[list[bytes], int]] = {}
     special_pat = "|".join(
         re.escape(token)

@@ -100,7 +100,7 @@ def train_bpe(
     with mp.Pool(processes=num_processes) as pool:
         tasks = [(input_path, special_tokens, boundary) for boundary in zip(boundaries[:-1], boundaries[1:])]
         chunk_pre_tokens = pool.starmap(
-            split_pre_tokens, tasks
+            split_pre_tokens_from_file, tasks
         )
 
     # Merge the pre-token counts from all chunks
@@ -116,23 +116,18 @@ def train_bpe(
     return bpe_from_pre_tokens(merged_pre_tokens, special_tokens, vocab_size)
 
 def split_pre_tokens(
-    input_path: str | os.PathLike, 
+    corpus: str, 
     special_tokens: list[str],
-    boundary: tuple[int, int] | None = None,
 ) -> dict[str, tuple[list[bytes], int]]:
-    with open(input_path, "rb") as f:
-        if boundary:
-            f.seek(boundary[0])
-            corpus = f.read(boundary[1] - boundary[0]).decode("utf-8", errors="ignore")
-        else:
-            corpus = f.read().decode("utf-8", errors="ignore")
     pre_tokens : dict[str, tuple[list[bytes], int]] = {}
-    special_pat = "|".join(
-        re.escape(token)
-        for token in sorted(special_tokens, key=len, reverse=True)
-    )
-
-    segments = re.split(special_pat, corpus)
+    if special_tokens: 
+        special_pat = "|".join(
+            re.escape(token)
+            for token in sorted(special_tokens, key=len, reverse=True)
+        )
+        segments = re.split(special_pat, corpus)
+    else:
+        segments = [corpus]
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     for segment  in segments:
         words = re.findall(PAT, segment)
@@ -146,6 +141,19 @@ def split_pre_tokens(
                 pre_tokens[word] = (word_bl, 1)
 
     return pre_tokens
+
+def split_pre_tokens_from_file(
+    input_path: str | os.PathLike, 
+    special_tokens: list[str],
+    boundary: tuple[int, int] | None = None,
+) -> dict[str, tuple[list[bytes], int]]:
+    with open(input_path, "rb") as f:
+        if boundary:
+            f.seek(boundary[0])
+            corpus = f.read(boundary[1] - boundary[0]).decode("utf-8", errors="ignore")
+        else:
+            corpus = f.read().decode("utf-8", errors="ignore")
+    return split_pre_tokens(corpus, special_tokens)
 
 def bpe_from_pre_tokens(
     pre_tokens,
@@ -180,23 +188,8 @@ def bpe_from_pre_tokens(
         
         for pre_token in bp_to_pretoken[mbp]:
             bl, ct = pre_tokens.pop(pre_token)
-            i = 0
-            new_bl = []
-            while i < len(bl):
-                if i == len(bl) - 1:
-                    new_bl.append(bl[i])
-                    break
-                if (bl[i], bl[i+1]) == mbp:
-                    # update bytes list
-                    new_bytes = bl[i] + bl[i+1]
-                    new_bl.append(new_bytes)
-                    i += 1 # skip the next bytes
-                else:
-                    new_bl.append(bl[i])
-                i += 1
-            # print("new_pre_token", new_pre_token)
+            new_bl = merge_bp(bl, mbp)
             pre_tokens[pre_token] = (new_bl, ct)
-        
             # Update counts
             for bp in zip(bl[:-1], bl[1:]):
                 bp_counter[bp] -= ct
@@ -208,3 +201,18 @@ def bpe_from_pre_tokens(
         bp_to_pretoken.pop(mbp)
 
     return vocab, merges
+
+def merge_bp(bl: list[bytes], bp: tuple[bytes, bytes]) -> list[bytes]:
+    new_bl = []
+    i = 0
+    while i < len(bl):
+        if i == len(bl) - 1:
+            new_bl.append(bl[i])
+            break
+        if (bl[i], bl[i+1]) == bp:
+            new_bl.append(bl[i] + bl[i+1])
+            i += 1
+        else:
+            new_bl.append(bl[i])
+        i += 1
+    return new_bl

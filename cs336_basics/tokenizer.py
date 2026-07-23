@@ -3,31 +3,7 @@ import regex as re
 
 from cs336_basics.train_bpe import merge_bp
 
-def split_pre_tokens_linear(
-    corpus: str, 
-    special_tokens: list[str] = None,
-) -> list[str]:
-    res: list[str] = []
-
-    if special_tokens: 
-        special_pat = "|".join(
-            re.escape(token)
-            for token in sorted(special_tokens, key=len, reverse=True)
-        )
-        segments = re.split(f"({special_pat})", corpus)
-    else:
-        segments = [corpus]
-    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-    for segment  in segments:
-        if segment in (special_tokens or []):
-            res.append(segment)
-            continue
-        words = re.findall(PAT, segment)
-        for word in words:
-            res.append(word)
-    return res
-
-class tokenizer:
+class Tokenizer:
     def __init__(
         self, 
         vocab: dict[int, bytes], 
@@ -40,6 +16,10 @@ class tokenizer:
             self.re_vocab[b] = i
         self.merges = merges
         self.special_tokens = special_tokens or []
+        for special_token in self.special_tokens:
+            if special_token.encode("utf-8", errors="ignore") not in self.re_vocab:
+                self.vocab[len(self.vocab)] = special_token.encode("utf-8", errors="ignore")
+                self.re_vocab[special_token.encode("utf-8", errors="ignore")] = len(self.vocab)
 
     @classmethod
     def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
@@ -48,14 +28,13 @@ class tokenizer:
 
     def encode(self, text: str) -> list[int]:
         from cs336_basics.train_bpe import split_pre_tokens
-        pre_tokens = split_pre_tokens(text, self.special_tokens)
+        pre_tokens, pre_tokens_linear = split_pre_tokens(text, self.special_tokens, retain_linear_translation=True)
         for pre_token, (bl, ct) in pre_tokens.items():
             for lb, rb in self.merges:
                 if (lb, rb) in zip(bl[:-1], bl[1:]):
                     new_bl = merge_bp(bl, (lb, rb))
                     pre_tokens[pre_token] = (new_bl, ct)
                     bl = new_bl
-        pre_tokens_linear = split_pre_tokens_linear(text, self.special_tokens)
         res = []
         for pre_token in pre_tokens_linear:
             if pre_token in self.special_tokens:
@@ -89,7 +68,7 @@ if __name__ == "__main__":
     from cs336_basics.train_bpe import load_vocab, load_merges
     vocab = load_vocab("data/TinyStoriesV2-GPT4-train.txt.bpe.vocab.json")
     merges = load_merges("data/TinyStoriesV2-GPT4-train.txt.bpe.merges.json")
-    tokenizer = tokenizer(vocab, merges)
-    encoded = tokenizer.encode("Hello, world! 你好啦啦啦")
+    Tokenizer = Tokenizer(vocab, merges)
+    encoded = Tokenizer.encode("Hello, world! 你好啦啦啦")
     print(encoded)
-    print(tokenizer.decode(encoded))
+    print(Tokenizer.decode(encoded))

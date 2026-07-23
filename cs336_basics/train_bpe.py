@@ -93,10 +93,11 @@ def train_bpe(
     vocab_size: int,
     special_tokens: list[str],
 ):
+    split_chunks = 32
     num_processes = 8
     
     with open(input_path, "rb") as f:
-        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+        boundaries = find_chunk_boundaries(f, split_chunks, b"<|endoftext|>")
     with mp.Pool(processes=num_processes) as pool:
         tasks = [(input_path, special_tokens, boundary) for boundary in zip(boundaries[:-1], boundaries[1:])]
         chunk_pre_tokens = pool.starmap(
@@ -118,20 +119,29 @@ def train_bpe(
 def split_pre_tokens(
     corpus: str, 
     special_tokens: list[str],
+    retain_linear_translation: bool = False,
 ) -> dict[str, tuple[list[bytes], int]]:
     pre_tokens : dict[str, tuple[list[bytes], int]] = {}
+    linear_translation : list[str] = []
     if special_tokens: 
         special_pat = "|".join(
             re.escape(token)
             for token in sorted(special_tokens, key=len, reverse=True)
         )
-        segments = re.split(special_pat, corpus)
+        segments = re.split(f"({special_pat})", corpus)
     else:
         segments = [corpus]
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     for segment  in segments:
+        if segment in (special_tokens or []):
+            if retain_linear_translation:
+                linear_translation.append(segment)
+            continue
+
         words = re.findall(PAT, segment)
         for word in words:
+            if retain_linear_translation:
+                linear_translation.append(word)
             if word in pre_tokens:
                 word_bl, ct = pre_tokens[word]
                 pre_tokens[word] = (word_bl, ct + 1)
@@ -140,7 +150,7 @@ def split_pre_tokens(
                 word_bl : list[bytes] = [word_bytes[i:i+1] for i in range(len(word_bytes))]
                 pre_tokens[word] = (word_bl, 1)
 
-    return pre_tokens
+    return pre_tokens, linear_translation
 
 def split_pre_tokens_from_file(
     input_path: str | os.PathLike, 
@@ -153,7 +163,7 @@ def split_pre_tokens_from_file(
             corpus = f.read(boundary[1] - boundary[0]).decode("utf-8", errors="ignore")
         else:
             corpus = f.read().decode("utf-8", errors="ignore")
-    return split_pre_tokens(corpus, special_tokens)
+    return split_pre_tokens(corpus, special_tokens)[0]
 
 def bpe_from_pre_tokens(
     pre_tokens,

@@ -7,9 +7,10 @@ from cs336_basics.train_bpe import save_merges, save_vocab, train_bpe
 @app.function(
     image=build_image(),
     volumes=VOLUME_MOUNTS,
-    cpu=8.0,
-    memory= 100_000,
+    cpu=4.0,
+    memory= 32_000,
     timeout= 12 * 60 * 60,
+    nonpreemptible=True
 )
 def train_bpe_owt():
     start_time = time()

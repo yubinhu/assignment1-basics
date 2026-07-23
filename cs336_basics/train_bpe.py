@@ -94,7 +94,7 @@ def train_bpe(
     special_tokens: list[str],
 ):
     split_chunks = 32
-    num_processes = 8
+    num_processes = 4
     
     with open(input_path, "rb") as f:
         boundaries = find_chunk_boundaries(f, split_chunks, b"<|endoftext|>")

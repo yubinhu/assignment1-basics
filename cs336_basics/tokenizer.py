@@ -19,8 +19,9 @@ def split_pre_tokens_linear(
         segments = [corpus]
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     for segment  in segments:
-        if segment in special_tokens:
+        if segment in (special_tokens or []):
             res.append(segment)
+            continue
         words = re.findall(PAT, segment)
         for word in words:
             res.append(word)
@@ -42,7 +43,8 @@ class tokenizer:
 
     @classmethod
     def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
-        pass
+        from cs336_basics.train_bpe import load_merges, load_vocab
+        return cls(load_vocab(vocab_filepath), load_merges(merges_filepath), special_tokens)
 
     def encode(self, text: str) -> list[int]:
         from cs336_basics.train_bpe import split_pre_tokens
@@ -52,9 +54,13 @@ class tokenizer:
                 if (lb, rb) in zip(bl[:-1], bl[1:]):
                     new_bl = merge_bp(bl, (lb, rb))
                     pre_tokens[pre_token] = (new_bl, ct)
+                    bl = new_bl
         pre_tokens_linear = split_pre_tokens_linear(text, self.special_tokens)
         res = []
         for pre_token in pre_tokens_linear:
+            if pre_token in self.special_tokens:
+                res.append(self.re_vocab[pre_token.encode("utf-8")])
+                continue
             for bts in pre_tokens[pre_token][0]:
                 if bts in self.re_vocab:
                     res.append(self.re_vocab[bts])
@@ -63,7 +69,8 @@ class tokenizer:
         return res
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
-        pass
+        for text in iterable:
+            yield from self.encode(text)
 
     def decode(self, ids: list[int]) -> str:
         bl: list[bytes] = []

@@ -1,19 +1,27 @@
 from time import time
 
-from train_bpe import train_bpe, save_vocab
+from cs336_basics.modal_utils import DATA_PATH, VOLUME_MOUNTS, app, build_image
+from cs336_basics.train_bpe import train_bpe, save_vocab
 
 
+@app.function(
+    image=build_image(),
+    volumes=VOLUME_MOUNTS,
+    cpu=8.0,
+    memory=30_000,
+    timeout=30 * 60,
+)
 def main():
     start_time = time()
-    vocab, _ = train_bpe("data/TinyStoriesV2-GPT4-train.txt", 10000, ["<|endoftext|>"])
+    vocab, _ = train_bpe(DATA_PATH / "TinyStoriesV2-GPT4-train.txt", 10000, ["<|endoftext|>"])
     end_time = time()
     print(f"Training BPE took {end_time - start_time:.2f} seconds")
 
-    save_vocab("data/TinyStoriesV2-GPT4-train.txt.bpe.vocab.json", vocab)
+    save_vocab(DATA_PATH / "TinyStoriesV2-GPT4-train.txt.bpe.vocab.json", vocab)
 
     print("Vocabulary size:", len(vocab))
     print("First 10 vocabulary items:", list(vocab.items())[:10])
 
 
 if __name__ == "__main__":
-    main()
+    main.local()

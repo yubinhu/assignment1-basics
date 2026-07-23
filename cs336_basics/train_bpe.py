@@ -6,15 +6,30 @@ import json
 from pathlib import Path
 
 def save_vocab(path, vocab):
-    serialized = [vocab[token_id].hex() for token_id in range(len(vocab))]
-    Path(path).write_text(json.dumps(serialized), encoding="utf-8")
+    serialized = [
+        {
+            "index": token_id,
+            "hex": vocab[token_id].hex(),
+            "repr": repr(vocab[token_id]),
+        }
+        for token_id in range(len(vocab))
+    ]
+    Path(path).write_text(json.dumps(serialized, indent=2) + "\n", encoding="utf-8")
 
 
 def load_vocab(path):
     serialized = json.loads(Path(path).read_text(encoding="utf-8"))
+
+    # Continue to support vocabularies written by the original compact format.
+    if serialized and isinstance(serialized[0], str):
+        return {
+            token_id: bytes.fromhex(token)
+            for token_id, token in enumerate(serialized)
+        }
+
     return {
-        token_id: bytes.fromhex(token)
-        for token_id, token in enumerate(serialized)
+        token["index"]: bytes.fromhex(token["hex"])
+        for token in serialized
     }
 
 def find_chunk_boundaries(

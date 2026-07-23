@@ -14,7 +14,11 @@ class Tokenizer:
         self.re_vocab = {}
         for i, b in vocab.items():
             self.re_vocab[b] = i
-        self.merges = merges
+        self.merge_ranks : dict[tuple[bytes, bytes], int] = {
+            pair: rank
+            for rank, pair in enumerate(merges)
+        }
+
         self.special_tokens = special_tokens or []
         for special_token in self.special_tokens:
             if special_token.encode("utf-8", errors="ignore") not in self.re_vocab:
@@ -30,11 +34,17 @@ class Tokenizer:
         from cs336_basics.train_bpe import split_pre_tokens
         pre_tokens, pre_tokens_linear = split_pre_tokens(text, self.special_tokens, retain_linear_translation=True)
         for pre_token, (bl, ct) in pre_tokens.items():
-            for lb, rb in self.merges:
-                if (lb, rb) in zip(bl[:-1], bl[1:]):
-                    new_bl = merge_bp(bl, (lb, rb))
-                    pre_tokens[pre_token] = (new_bl, ct)
-                    bl = new_bl
+            while len(bl) > 1:
+                bps = zip(bl[:-1], bl[1:])
+                hbp, hbpr = None, float('inf')
+                for bp in bps:
+                    if bp in self.merge_ranks.keys() and self.merge_ranks[bp] < hbpr:
+                        hbp, hbpr = bp, self.merge_ranks[bp]
+                if hbp == None:
+                    break
+                new_bl = merge_bp(bl, hbp)
+                bl = new_bl
+            pre_tokens[pre_token] = (bl, ct)
         res = []
         for pre_token in pre_tokens_linear:
             if pre_token in self.special_tokens:

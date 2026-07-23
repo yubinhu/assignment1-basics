@@ -22,6 +22,11 @@ def main():
     print("Vocabulary size:", len(vocab))
     print("First 10 vocabulary items:", list(vocab.items())[:10])
 
+    print(
+        "Longest 10 vocabulary items:",
+        sorted(vocab.items(), key=lambda item: len(item[1]), reverse=True)[:10],
+    )
+
 
 if __name__ == "__main__":
     main.local()

@@ -17,6 +17,16 @@ def save_vocab(path, vocab):
     Path(path).write_text(json.dumps(serialized, indent=2) + "\n", encoding="utf-8")
 
 
+def save_merges(path, merges):
+    serialized = [[left.hex(), right.hex()] for left, right in merges]
+    Path(path).write_text(json.dumps(serialized, indent=2) + "\n", encoding="utf-8")
+
+
+def load_merges(path):
+    serialized = json.loads(Path(path).read_text(encoding="utf-8"))
+    return [(bytes.fromhex(left), bytes.fromhex(right)) for left, right in serialized]
+
+
 def load_vocab(path):
     serialized = json.loads(Path(path).read_text(encoding="utf-8"))
 

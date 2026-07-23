@@ -20,10 +20,13 @@ class Tokenizer:
         }
 
         self.special_tokens = special_tokens or []
+        next_id = max(self.vocab, default=-1) + 1
         for special_token in self.special_tokens:
-            if special_token.encode("utf-8", errors="ignore") not in self.re_vocab:
-                self.vocab[len(self.vocab)] = special_token.encode("utf-8", errors="ignore")
-                self.re_vocab[special_token.encode("utf-8", errors="ignore")] = len(self.vocab)
+            token_bytes = special_token.encode("utf-8")
+            if token_bytes not in self.re_vocab:
+                self.vocab[next_id] = token_bytes
+                self.re_vocab[token_bytes] = next_id
+                next_id += 1
 
     @classmethod
     def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
@@ -40,7 +43,7 @@ class Tokenizer:
                 for bp in bps:
                     if bp in self.merge_ranks.keys() and self.merge_ranks[bp] < hbpr:
                         hbp, hbpr = bp, self.merge_ranks[bp]
-                if hbp == None:
+                if hbp is None:
                     break
                 new_bl = merge_bp(bl, hbp)
                 bl = new_bl

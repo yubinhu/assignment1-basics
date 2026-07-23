@@ -120,7 +120,10 @@ def split_pre_tokens(
     corpus: str, 
     special_tokens: list[str],
     retain_linear_translation: bool = False,
-) -> dict[str, tuple[list[bytes], int]]:
+) -> tuple[
+    dict[str, tuple[list[bytes], int]],
+    list[str],
+]:
     pre_tokens : dict[str, tuple[list[bytes], int]] = {}
     linear_translation : list[str] = []
     if special_tokens: 

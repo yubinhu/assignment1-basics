@@ -117,3 +117,6 @@ At $T=16{,}384$, the XL forward pass costs $133{,}577{,}729{,}638{,}400$ FLOPs
 ($133.578$ TFLOPs), which is $37.983\times$ the cost at $T=1{,}024$. The quadratic attention
 products grow from $9.16\%$ to $61.73\%$ of the total, while the combined QKV/output-projection, FFN,
 and LM-head shares fall to $12.06\%$, $24.24\%$, and $1.97\%$, respectively.
+
+### learning_rate_tuning
+1 slowly dropped loss from 21 to 11. 1e1 dropped it slowly from 20 to 0.01. 1e2 quickly dropped it to a very small number then 0 afterwards. 1e3 diverged and went to inf after a bit. 

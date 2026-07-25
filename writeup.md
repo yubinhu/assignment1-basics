@@ -57,3 +57,63 @@ Encoding data/owt_valid.txt → data/owt_valid_ids.npy  (32 workers, ~128 chunks
 
 ### transformer_accounting
 
+#### (a)
+
+For this bias-free architecture with untied input embeddings and LM head, the parameter count is
+$2Vd + L(4d^2 + 3d d_{\mathrm{ff}} + 2d) + d = 1{,}640{,}452{,}800$. In single precision, the parameters
+require $6{,}561{,}811{,}200$ bytes, or about $6.562$ GB ($6.111$ GiB).
+
+#### (b)
+
+Let $T=1{,}024$, $d=1{,}600$, $d_{\mathrm{ff}}=4{,}288$, $V=50{,}257$, $L=48$,
+$h=25$, and $d_h=d/h=64$. The required matrix multiplies are:
+
+| Matrix multiply | Multiplicity and shape | FLOPs |
+|---|---:|---:|
+| Query, key, and value projections | $3L$ multiplies of $(T \times d)(d \times d)$ | $6LTd^2 = 754{,}974{,}720{,}000$ |
+| Attention scores $QK^\mathsf{T}$ | $Lh$ multiplies of $(T \times d_h)(d_h \times T)$ | $2LT^2d = 161{,}061{,}273{,}600$ |
+| Attention-weighted values $AV$ | $Lh$ multiplies of $(T \times T)(T \times d_h)$ | $2LT^2d = 161{,}061{,}273{,}600$ |
+| Attention output projection | $L$ multiplies of $(T \times d)(d \times d)$ | $2LTd^2 = 251{,}658{,}240{,}000$ |
+| SwiGLU $W_1$ and $W_3$ projections | $2L$ multiplies of $(T \times d)(d \times d_{\mathrm{ff}})$ | $4LTd d_{\mathrm{ff}} = 1{,}348{,}888{,}166{,}400$ |
+| SwiGLU $W_2$ projection | $L$ multiplies of $(T \times d_{\mathrm{ff}})(d_{\mathrm{ff}} \times d)$ | $2LTd d_{\mathrm{ff}} = 674{,}444{,}083{,}200$ |
+| Final LM head | One multiply of $(T \times d)(d \times V)$ | $2TdV = 164{,}682{,}137{,}600$ |
+
+Thus, the matrix multiplies require
+$$
+L(8Td^2 + 4T^2d + 6Td d_{\mathrm{ff}}) + 2TdV
+= 3{,}516{,}769{,}894{,}400
+$$
+FLOPs, or about $3.517$ TFLOPs. The embedding lookup, RMSNorm, RoPE, softmax, activations, and residual
+operations are not dense matrix multiplies and are excluded from this accounting.
+
+#### (c)
+
+The SwiGLU feed-forward layers dominate at $57.53\%$ of the FLOPs, while multi-head attention as a
+whole uses $37.78\%$. Most of that attention cost is in the combined QKV and output projections
+($28.62\%$); at this context length, the two quadratic attention products contribute only $9.16\%$.
+
+#### (d)
+
+Using $T=1{,}024$, $V=50{,}257$, and the nearest multiple of 64 to
+$\frac{8}{3}d$ for $d_{\mathrm{ff}}$ gives $d_{\mathrm{ff}}=2{,}048$, $2{,}752$, $3{,}392$, and
+$4{,}288$ for small, medium, large, and XL, respectively. Each component below is reported as
+TFLOPs followed by its proportion of the model's total FLOPs.
+
+| Model | QKV projections | $QK^\mathsf{T}$ | $AV$ | Output projection | SwiGLU FFN | LM head | Total TFLOPs |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Small | 0.0435 (14.91%) | 0.0193 (6.63%) | 0.0193 (6.63%) | 0.0145 (4.97%) | 0.1160 (39.76%) | 0.0790 (27.10%) | 0.2916 |
+| Medium | 0.1546 (18.62%) | 0.0515 (6.21%) | 0.0515 (6.21%) | 0.0515 (6.21%) | 0.4155 (50.05%) | 0.1054 (12.70%) | 0.8302 |
+| Large | 0.3624 (20.49%) | 0.0966 (5.46%) | 0.0966 (5.46%) | 0.1208 (6.83%) | 0.9603 (54.30%) | 0.1317 (7.45%) | 1.7685 |
+| XL | 0.7550 (21.47%) | 0.1611 (4.58%) | 0.1611 (4.58%) | 0.2517 (7.16%) | 2.0233 (57.53%) | 0.1647 (4.68%) | 3.5168 |
+
+As model size grows at fixed $T$ and $V$, the FFN share rises from $39.76\%$ to $57.53\%$, and the
+combined projection share rises from $19.88\%$ to $28.62\%$, because these block operations scale
+roughly as $Ld^2$. The quadratic attention-products share falls from $13.25\%$ to $9.16\%$, while the
+LM-head share falls from $27.10\%$ to $4.68\%$.
+
+#### (e)
+
+At $T=16{,}384$, the XL forward pass costs $133{,}577{,}729{,}638{,}400$ FLOPs
+($133.578$ TFLOPs), which is $37.983\times$ the cost at $T=1{,}024$. The quadratic attention
+products grow from $9.16\%$ to $61.73\%$ of the total, while the combined QKV/output-projection, FFN,
+and LM-head shares fall to $12.06\%$, $24.24\%$, and $1.97\%$, respectively.

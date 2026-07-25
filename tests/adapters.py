@@ -149,7 +149,10 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    from cs336_basics.multihead_self_attention import MultiheadSelfAttention
+    multihead_self_attention = MultiheadSelfAttention(d_model, num_heads)
+    multihead_self_attention.load_state_dict({"Q.W": q_proj_weight, "K.W": k_proj_weight, "V.W": v_proj_weight, "O.W": o_proj_weight})
+    return multihead_self_attention.forward(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -189,7 +192,10 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    from cs336_basics.multihead_self_attention import MultiheadSelfAttention
+    multihead_self_attention = MultiheadSelfAttention(d_model, num_heads, max_seq_len, theta)
+    multihead_self_attention.load_state_dict({"Q.W": q_proj_weight, "K.W": k_proj_weight, "V.W": v_proj_weight, "O.W": o_proj_weight})
+    return multihead_self_attention.forward(in_features, token_positions)
 
 
 def run_rope(

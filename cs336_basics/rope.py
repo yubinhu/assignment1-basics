@@ -30,7 +30,15 @@ class RoPE(nn.Module):
         x: Float[Tensor, " ... seq_len d_k"], 
         token_positions: Int[Tensor, " ... seq_len"],
     ) -> Float[Tensor, " ... seq_len d_k"]:
-        pass
+
+        rearranged = rearrange(x, "... seq_len (half two) -> ... seq_len half two", two=2)
+        left, right = rearranged[..., 0], rearranged[..., 1]  # ... seq_len half
+        cos_rel = self.cos_mat[token_positions] # ... seq_len, half
+        sin_rel = self.sin_mat[token_positions] # ... seq_len, half
+        top = cos_rel * left - sin_rel * right
+        bottom = sin_rel * left + cos_rel * right # ... seq_len, half
+        out = rearrange(torch.stack([top, bottom], dim=-1), "... seq_len half two -> ... seq_len (half two)")
+        return out
 
 
 if __name__ == "__main__":

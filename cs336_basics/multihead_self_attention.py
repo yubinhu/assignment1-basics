@@ -45,6 +45,8 @@ class MultiheadSelfAttention(torch.nn.Module):
         )
 
         if self.rope is not None:
+            if token_positions is None:
+                token_positions = torch.arange(sequence_length, device=x.device)
             Q = self.rope.forward(Q, token_positions)
             K = self.rope.forward(K, token_positions)
 

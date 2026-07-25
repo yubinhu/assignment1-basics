@@ -51,7 +51,7 @@ class MultiheadSelfAttention(torch.nn.Module):
             K = self.rope.forward(K, token_positions)
 
         self_attn_mask = ~torch.triu(
-            torch.ones(sequence_length, sequence_length, dtype=torch.bool),
+            torch.ones(sequence_length, sequence_length, dtype=torch.bool, device=x.device),
             diagonal=1
         )
 

@@ -2,7 +2,6 @@ import torch
 from torch import nn, Tensor
 from jaxtyping import Bool, Float, Int
 from einops import einsum, rearrange
-from torch import Tensor
 
 class RoPE(nn.Module):
     def __init__(self, theta: float, d_k: int, max_seq_len: int, device: torch.device = None):

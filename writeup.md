@@ -2,7 +2,9 @@
 
 ### train_bpe_expts_owt
 - (a) ÃÂ × 16. Makes sense but looks like OWT is a lower quality dataset than tiny stories. 
+
 - (b) The longest tokens in tinystories are [(7160, b' accomplishment'), (9143, b' disappointment'), (9379, b' responsibility'), (3228, b' uncomfortable'), (3515, b' compassionate'), (5319, b' understanding'), (6386, b' neighbourhood'), (6497, b' Unfortunately'), (6874, b' determination'), (7756, b' encouragement')]
+```bash
 Top tokens in OWT: 
 Token ID	Bytes	Decoded content
 25822	64	ÃÂ × 16
@@ -15,11 +17,12 @@ Token ID	Bytes	Decoded content
 28585	32	. × 32
 31162	32	* × 32
 15279	24	— × 8
+```
 
 The longest ones in tiny stories are more emotionally coded and the ones in OWT come from artifacts
 
 ### tokenizer_experiments
-
+```bash
 === (a) Compression ratios on 10 sampled docs ===
 TinyStories tokenizer on TinyStories sample: 4.187 bytes/token
 OpenWebText tokenizer on OpenWebText sample: 4.702 bytes/token
@@ -50,4 +53,7 @@ Encoding data/owt_train.txt → data/owt_train_ids.npy  (32 workers, ~128 chunks
 Encoding data/owt_valid.txt → data/owt_valid_ids.npy  (32 workers, ~128 chunks)
   split into 128 chunks
   wrote 66,401,098 tokens, max_id=31999 in 13.6s (21.3 MB/s)
+```
+
+### transformer_accounting
 

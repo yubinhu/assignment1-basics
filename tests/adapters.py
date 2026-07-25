@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 import os
 from collections.abc import Iterable
 from typing import IO, Any, BinaryIO
@@ -32,8 +31,8 @@ def run_linear(
 
     from cs336_basics.linear import Linear
     linear = Linear(d_in, d_out)
-    linear.load_state_dict({"W": weights})
-    return linear.forward(in_features)
+    linear.load_state_dict({"weight": weights})
+    return linear(in_features)
 
 
 def run_embedding(
@@ -57,8 +56,8 @@ def run_embedding(
 
     from cs336_basics.embedding import Embedding
     embedding = Embedding(vocab_size, d_model)
-    embedding.load_state_dict({"embedding": weights})
-    return embedding.forward(token_ids)
+    embedding.load_state_dict({"weight": weights})
+    return embedding(token_ids)
 
 
 def run_swiglu(
@@ -92,8 +91,8 @@ def run_swiglu(
     # swiglu.w3.weight.data = w3_weight
     from cs336_basics.positionwise_feedforward import PositionwiseFeedForward
     swiglu = PositionwiseFeedForward(d_model, d_ff)
-    swiglu.load_state_dict({"W1": w1_weight, "W2": w2_weight, "W3": w3_weight})
-    return swiglu.forward(in_features)
+    swiglu.load_state_dict({"w1.weight": w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight})
+    return swiglu(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -151,8 +150,15 @@ def run_multihead_self_attention(
     """
     from cs336_basics.multihead_self_attention import MultiheadSelfAttention
     multihead_self_attention = MultiheadSelfAttention(d_model, num_heads)
-    multihead_self_attention.load_state_dict({"Q.W": q_proj_weight, "K.W": k_proj_weight, "V.W": v_proj_weight, "O.W": o_proj_weight})
-    return multihead_self_attention.forward(in_features)
+    multihead_self_attention.load_state_dict(
+        {
+            "q_proj.weight": q_proj_weight,
+            "k_proj.weight": k_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "output_proj.weight": o_proj_weight,
+        }
+    )
+    return multihead_self_attention(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -194,8 +200,15 @@ def run_multihead_self_attention_with_rope(
     """
     from cs336_basics.multihead_self_attention import MultiheadSelfAttention
     multihead_self_attention = MultiheadSelfAttention(d_model, num_heads, max_seq_len, theta)
-    multihead_self_attention.load_state_dict({"Q.W": q_proj_weight, "K.W": k_proj_weight, "V.W": v_proj_weight, "O.W": o_proj_weight})
-    return multihead_self_attention.forward(in_features, token_positions)
+    multihead_self_attention.load_state_dict(
+        {
+            "q_proj.weight": q_proj_weight,
+            "k_proj.weight": k_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "output_proj.weight": o_proj_weight,
+        }
+    )
+    return multihead_self_attention(in_features, token_positions)
 
 
 def run_rope(
@@ -219,7 +232,7 @@ def run_rope(
     """
     from cs336_basics.rope import RoPE
     rope = RoPE(theta, d_k, max_seq_len)
-    return rope.forward(in_query_or_key, token_positions)
+    return rope(in_query_or_key, token_positions)
 
 
 def run_transformer_block(
@@ -294,19 +307,8 @@ def run_transformer_block(
     """
     from cs336_basics.transformer_block import TransformerBlock
     transformer_block = TransformerBlock(d_model, num_heads, d_ff, max_seq_len, theta)
-    key_map = {
-        "attn.q_proj.weight": "attn.Q.W",
-        "attn.k_proj.weight": "attn.K.W",
-        "attn.v_proj.weight": "attn.V.W",
-        "attn.output_proj.weight": "attn.O.W",
-        "ffn.w1.weight": "ffn.W1",
-        "ffn.w2.weight": "ffn.W2",
-        "ffn.w3.weight": "ffn.W3",
-        "ln1.weight": "ln1.gain",
-        "ln2.weight": "ln2.gain",
-    }
-    transformer_block.load_state_dict({key_map[k]: v for k, v in weights.items()})
-    return transformer_block.forward(in_features)
+    transformer_block.load_state_dict(weights)
+    return transformer_block(in_features)
 
 
 def run_transformer_lm(
@@ -390,25 +392,8 @@ def run_transformer_lm(
     """
     from cs336_basics.transformer_lm import TransformerLM
     transformer_lm = TransformerLM(vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta)
-    key_map = {
-        "token_embeddings.weight": "embedding.embedding",
-        "ln_final.weight": "ln_final.gain",
-        "lm_head.weight": "linear_out.W",
-    }
-    for i in range(num_layers):
-        key_map.update({
-            f"layers.{i}.attn.q_proj.weight": f"layers.{i}.attn.Q.W",
-            f"layers.{i}.attn.k_proj.weight": f"layers.{i}.attn.K.W",
-            f"layers.{i}.attn.v_proj.weight": f"layers.{i}.attn.V.W",
-            f"layers.{i}.attn.output_proj.weight": f"layers.{i}.attn.O.W",
-            f"layers.{i}.ffn.w1.weight": f"layers.{i}.ffn.W1",
-            f"layers.{i}.ffn.w2.weight": f"layers.{i}.ffn.W2",
-            f"layers.{i}.ffn.w3.weight": f"layers.{i}.ffn.W3",
-            f"layers.{i}.ln1.weight": f"layers.{i}.ln1.gain",
-            f"layers.{i}.ln2.weight": f"layers.{i}.ln2.gain",
-        })
-    transformer_lm.load_state_dict({key_map[k]: v for k, v in weights.items()})
-    return transformer_lm.forward(in_indices)
+    transformer_lm.load_state_dict(weights)
+    return transformer_lm(in_indices)
 
 
 def run_rmsnorm(
@@ -433,8 +418,8 @@ def run_rmsnorm(
     """
     from cs336_basics.rmsnorm import RMSNorm
     rmsnorm = RMSNorm(d_model, eps)
-    rmsnorm.load_state_dict({"gain": weights})
-    return rmsnorm.forward(in_features)
+    rmsnorm.load_state_dict({"weight": weights})
+    return rmsnorm(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:

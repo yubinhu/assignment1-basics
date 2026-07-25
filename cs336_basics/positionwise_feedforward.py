@@ -11,21 +11,21 @@ class PositionwiseFeedForward(nn.Module):
             d_ff = int(round(8/3*d_model / 64) * 64)
         std = (2 / (d_ff + d_model))**0.5
         self.W1 = nn.Parameter(torch.nn.init.trunc_normal_(
-            torch.empty(d_ff, d_model, dtype=dtype),
+            torch.empty(d_ff, d_model, device=device, dtype=dtype),
             mean = 0,
             std = std,
             a = -3 * std,
             b = 3 * std,
         ))
         self.W2 = nn.Parameter(torch.nn.init.trunc_normal_(
-            torch.empty(d_model, d_ff, dtype=dtype),
+            torch.empty(d_model, d_ff, device=device, dtype=dtype),
             mean = 0,
             std = std,
             a = -3 * std,
             b = 3 * std,
         ))
         self.W3 = nn.Parameter(torch.nn.init.trunc_normal_(
-            torch.empty(d_ff, d_model, dtype=dtype),
+            torch.empty(d_ff, d_model, device=device, dtype=dtype),
             mean = 0,
             std = std,
             a = -3 * std,

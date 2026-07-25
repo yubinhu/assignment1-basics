@@ -13,17 +13,13 @@ class Embedding(nn.Module):
         std = 1
         self.embedding = nn.Parameter(
             nn.init.trunc_normal_(
-                torch.empty(num_embeddings, embedding_dim, dtype=dtype),
+                torch.empty(num_embeddings, embedding_dim, device=device, dtype=dtype),
                 mean = 0,
                 std = std,
                 a = -3 * std,
                 b = 3 * std
             )
         )
-        if not device:
-            # Use gpu if available
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.embedding.to(device)
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
         return self.embedding[token_ids]

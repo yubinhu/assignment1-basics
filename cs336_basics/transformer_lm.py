@@ -16,7 +16,6 @@ class TransformerLM(nn.Module):
         num_heads: int,
         d_ff: int,
         rope_theta: float,
-        weights: dict[str, Tensor] | None = None,
         device: torch.device = None,
     ):
         super().__init__()
@@ -27,7 +26,6 @@ class TransformerLM(nn.Module):
         self.num_heads = num_heads
         self.d_ff = d_ff
         self.rope_theta = rope_theta
-        self.weights = weights
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
@@ -36,9 +34,6 @@ class TransformerLM(nn.Module):
         self.layers = nn.ModuleList([TransformerBlock(d_model, num_heads, d_ff, context_length, rope_theta, device=device) for _ in range(num_layers)])
         self.ln_final = RMSNorm(d_model=d_model, device=device)
         self.linear_out = Linear(d_model, vocab_size, device=device)
-
-        if weights is not None:
-            self.load_state_dict(weights)
 
     def forward(self, in_indices: Int[Tensor, "batch_size sequence_length"]) -> Float[Tensor, "batch_size sequence_length vocab_size"]:
         x = self.embedding(in_indices)

@@ -10,11 +10,10 @@ from cs336_basics.train_bpe import save_merges, save_vocab, train_bpe
     cpu=4.0,
     memory= 32_000,
     timeout= 12 * 60 * 60,
-    nonpreemptible=True
 )
 def train_bpe_owt():
     start_time = time()
-    vocab, merges = train_bpe(DATA_PATH / "owt_train.txt", 32000, ["<|endoftext|>"])
+    vocab, merges = train_bpe(DATA_PATH / "owt_train.txt", 32000, ["<|endoftext|>"], checkpoint=True)
     end_time = time()
     print(f"Training BPE took {end_time - start_time:.2f} seconds")
 

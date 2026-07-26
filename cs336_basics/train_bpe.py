@@ -1,4 +1,5 @@
 import os 
+import heapq
 import regex as re
 from typing import BinaryIO
 import multiprocessing as mp
@@ -92,6 +93,7 @@ def train_bpe(
     input_path: str | os.PathLike,
     vocab_size: int,
     special_tokens: list[str],
+    checkpoint: bool = False,
 ):
     split_chunks = 32
     num_processes = 4
@@ -114,7 +116,7 @@ def train_bpe(
             else:
                 merged_pre_tokens[pre_token] = (bl, ct)
     
-    return bpe_from_pre_tokens(merged_pre_tokens, special_tokens, vocab_size)
+    return bpe_from_pre_tokens(merged_pre_tokens, special_tokens, vocab_size, input_path if checkpoint else None)
 
 def split_pre_tokens(
     corpus: str, 
@@ -168,12 +170,23 @@ def split_pre_tokens_from_file(
             corpus = f.read().decode("utf-8", errors="ignore")
     return split_pre_tokens(corpus, special_tokens)[0]
 
+class _MergeCandidate:
+    __slots__ = ("count", "pair")
+
+    def __init__(self, count, pair):
+        self.count, self.pair = count, pair
+
+    def __lt__(self, other):
+        return (self.count, self.pair) > (other.count, other.pair)
+
 def bpe_from_pre_tokens(
     pre_tokens,
     special_tokens,
     vocab_size,
+    checkpoint_path=None,
 ):
     from collections import defaultdict
+    checkpoint_paths = [Path(f"{checkpoint_path}.bpe.{kind}.json") for kind in ("vocab", "merges")] if checkpoint_path else []
     vocab : dict[int, bytes] = {}
     vocab_ctr = 0
     for i in range(256):
@@ -183,36 +196,86 @@ def bpe_from_pre_tokens(
         vocab[vocab_ctr] = bytes(token, encoding='utf-8')
         vocab_ctr += 1
     merges = []
+    if checkpoint_paths and all(path.exists() for path in checkpoint_paths):
+        vocab, merges = load_vocab(checkpoint_paths[0]), load_merges(checkpoint_paths[1])
+        vocab_ctr = len(vocab)
+        print(f"Resuming from {len(merges)} merges")
+        if len(vocab) >= vocab_size:
+            return vocab, merges
+        merge_ranks = {bp: rank for rank, bp in enumerate(merges)}
+        for pre_token, (bl, ct) in pre_tokens.items():
+            while len(bl) > 1:
+                mbp = min(zip(bl[:-1], bl[1:]), key=lambda bp: merge_ranks.get(bp, len(merges)))
+                if mbp not in merge_ranks:
+                    break
+                bl = merge_bp(bl, mbp)
+            pre_tokens[pre_token] = (bl, ct)
+
+    def save_checkpoint():
+        if checkpoint_paths:
+            save_vocab(checkpoint_paths[0], vocab)
+            save_merges(checkpoint_paths[1], merges)
+
     bp_counter : dict[tuple[bytes, bytes], int] = defaultdict(int)
     bp_to_pretoken : dict[tuple[bytes, bytes], set[str]] = defaultdict(set)
     for pre_token, (bl, ct) in pre_tokens.items():
         for bp in zip(bl[:-1], bl[1:]):
             bp_counter[bp] += ct
             bp_to_pretoken[bp].add(pre_token)
+    bp_heap = [_MergeCandidate(ct, bp) for bp, ct in bp_counter.items()]
+    heapq.heapify(bp_heap)
 
     while len(vocab) < vocab_size:
-        # Find max bp
-        mbp:tuple = max(bp_counter.keys(), key=lambda bp: (bp_counter[bp], bp))        
+        while bp_heap:
+            candidate = heapq.heappop(bp_heap)
+            if bp_counter.get(candidate.pair) == candidate.count:
+                mbp = candidate.pair
+                break
+        else:
+            break
         
         # Merge
         merges.append(mbp)
         vocab[vocab_ctr] = mbp[0] + mbp[1]
         vocab_ctr += 1
-        
-        for pre_token in bp_to_pretoken[mbp]:
+
+        changed_bps = set()
+        affected_pre_tokens = bp_to_pretoken.pop(mbp)
+        for pre_token in affected_pre_tokens:
             bl, ct = pre_tokens.pop(pre_token)
             new_bl = merge_bp(bl, mbp)
             pre_tokens[pre_token] = (new_bl, ct)
+
+            old_bps = list(zip(bl[:-1], bl[1:]))
+            new_bps = list(zip(new_bl[:-1], new_bl[1:]))
             # Update counts
-            for bp in zip(bl[:-1], bl[1:]):
+            for bp in old_bps:
                 bp_counter[bp] -= ct
-            for bp in zip(new_bl[:-1], new_bl[1:]):
+            for bp in new_bps:
                 bp_counter[bp] += ct
+            old_bp_set, new_bp_set = set(old_bps), set(new_bps)
+            changed_bps.update(old_bp_set | new_bp_set)
+
+            for bp in old_bp_set - new_bp_set:
+                bp_to_pretoken[bp].discard(pre_token)
+            for bp in new_bp_set - old_bp_set:
                 bp_to_pretoken[bp].add(pre_token)
 
-        bp_counter.pop(mbp) # This is not a bp anymore
-        bp_to_pretoken.pop(mbp)
+        bp_counter.pop(mbp)
+        for bp in changed_bps:
+            count = bp_counter.get(bp, 0)
+            if count > 0:
+                heapq.heappush(bp_heap, _MergeCandidate(count, bp))
+            else:
+                bp_counter.pop(bp, None)
+                bp_to_pretoken.pop(bp, None)
+        if len(bp_heap) > max(1024, 2 * len(bp_counter)):
+            bp_heap = [_MergeCandidate(ct, bp) for bp, ct in bp_counter.items()]
+            heapq.heapify(bp_heap)
+        if len(merges) % 1000 == 0:
+            save_checkpoint()
 
+    save_checkpoint()
     return vocab, merges
 
 def merge_bp(bl: list[bytes], bp: tuple[bytes, bytes]) -> list[bytes]:

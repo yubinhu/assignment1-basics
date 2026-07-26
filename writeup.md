@@ -143,3 +143,8 @@ GPT-2 XL: ModelConfig(vocab_size=50257, context_length=1024, num_layers=48, d_mo
 (d) training 400,000 steps at batch size 1024 on one H100 @ 50% MFU
   1.077e+16 FLOPs/step
   4,836 hours (202 days)
+
+### experiment_log
+
+Logging infrastructure is in [cs336_basics/experiment_log.py](cs336_basics/experiment_log.py); the
+experiment log itself is [experiments.md](experiments.md).

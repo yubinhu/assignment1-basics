@@ -148,3 +148,128 @@ GPT-2 XL: ModelConfig(vocab_size=50257, context_length=1024, num_layers=48, d_mo
 
 Logging infrastructure is in [cs336_basics/experiment_log.py](cs336_basics/experiment_log.py); the
 experiment log itself is [experiments.md](experiments.md).
+
+### learning_rate
+
+All runs use the §7.2.1 TinyStories config at the full 327,680,000-token budget
+(batch 32 × 40,000 steps × context 256), with `lr_min = lr_max/10` so a sweep varies the
+schedule's height and not its shape. "clip%" is the fraction of logged steps whose *pre-clip*
+gradient norm exceeded `max_grad_norm = 1.0`.
+
+| lr | warmup | best val | clip% | max ‖g‖ | max act RMS | verdict |
+|---|---|---|---|---|---|---|
+| 1e-3 | 200 | **1.3799** | 0.2% | 1.1 | 12.3 | stable |
+| 2e-3 | 200 | 1.3826 | 0.2% | 1.2 | 28.8 | stable |
+| 3e-3 | 200 | 2.1360 | 46% | 15.8 | 798 | **diverged** |
+| 1e-2 | 200 | 2.4155 | 87% | 402 | 49,489 | **diverged** |
+| 1e-3 | 2000 | 1.3846 | 0.5% | 2.3 | 12.8 | stable |
+| 3e-3 | 2000 | **1.3787** | 0.2% | 1.1 | 29.4 | stable (best) |
+| 1e-2 | 2000 | 2.5328 | 73% | 33.7 | 22,233 | **diverged** |
+
+**(a) Search strategy.** Log-spaced probing outward from a 1e-3 anchor rather than a grid. 1e-3 is
+the conventional AdamW starting point at this scale and was run first as a baseline; the second
+probe went an order of magnitude up to bracket instability from above, since the cheapest
+information early in a sweep is a failure — a diverging run identifies itself in a few hundred
+steps. Bisecting inward gave 3e-3, and when 3e-3 diverged at warmup 200 but converged at warmup
+2000, warmup was promoted from a fixed setting to a swept axis. Four runs beat the 1.45 target;
+best is **1.3787**. Curves: [data/curves-lr.png](data/curves-lr.png).
+
+**(b) Edge of stability.** The divergence boundary is a function of *warmup*, not of learning rate
+alone — a 10× longer warmup bought roughly 3× more usable learning rate:
+
+| warmup | highest stable | lowest divergent | best lr | best / divergence point |
+|---|---|---|---|---|
+| 200 | 2e-3 | 3e-3 | 1e-3 | 3× below |
+| 2000 | 3e-3 | 1e-2 | 3e-3 | 3.3× below |
+
+`lr=3e-3` is the decisive case: at warmup 200 it plateaus at 2.1360 with 46% clipping; at warmup
+2000 it is the best model in the sweep with 0.2% clipping. Identical peak LR, opposite outcomes.
+
+**Folk wisdom is not supported here.** The best LR is not at the edge of stability in either warmup
+regime, and more strikingly, *how close you get barely matters*: across the four stable runs the
+peak LR varies 3× while final validation loss spans 1.3787–1.3846, a range of 0.006 — comparable to
+run-to-run noise. Convergence rate does not separate either; all four stable runs cross 1.45 at
+roughly 27,000–29,000 steps. So within the stable band the learning rate is nearly free for final
+quality, and its real effect is on *risk*: 3e-3 requires getting warmup right or the run is
+destroyed, while 1e-3 tolerates either.
+
+**Divergence never produced a NaN.** Every divergent run kept finite losses and merely plateaued.
+Gradient clipping is what prevents the blowup and thereby conceals it — at 87% clipping the step
+size is throttled by an arbitrary per-step factor, so the run limps instead of exploding, and
+*post*-clip the gradient norm would read ≈1.0 on every step and look healthy. Activation RMS is the
+earliest signal, firing ~300 steps before clipping does, and the trigger is arrival at the peak
+rather than the ramp: mid-warmup at 5e-3 the run is clean, and one step past the peak the
+activation RMS is 53× its healthy baseline.
+
+### batch_size_experiment
+
+Every run holds batch × steps × context = 327,680,000 tokens, so step count varies inversely with
+batch size (320,000 steps at batch 4 down to 1,250 at batch 1024). The first pass held `lr` at the
+batch-32-tuned 1e-3 throughout; the second re-tuned it per the problem statement, scaling roughly
+as √batch from the 1e-3 anchor.
+
+| batch | steps | best lr | best val | val @ lr=1e-3 | clip% | ‖w‖ end |
+|---|---|---|---|---|---|---|
+| 4 | 320,000 | 1e-3 | 1.5629 | 1.5629 | 98.8% | 767 |
+| 16 | 80,000 | 1e-3 | 1.3957 | 1.3957 | 0.2% | 1549 |
+| 32 | 40,000 | 1e-3 | 1.3795 | 1.3795 | 0.2% | 1855 |
+| 64 | 20,000 | 1e-3 | 1.3646 | 1.3646 | 0.5% | 2038 |
+| 128 | 10,000 | 2e-3 | **1.3422** | 1.3767 | 1.0% | 2074 |
+| 256 | 5,000 | 3e-3 | **1.3421** | 1.4141 | 2.0% | 2142 |
+| 512 | 2,500 | 4e-3 | 1.3567 | 1.4630 | 4.0% | 2187 |
+| 1024 | 1,250 | 6e-3 | 1.3881 | 1.5620 | 7.7% | 2220 |
+| 2048 | 625 | — | **OOM** | — | — | — |
+
+Curves: [data/curves-batchsize.png](data/curves-batchsize.png). Batch 2048 is the memory limit —
+it fails allocating 19.53 GiB against a B200's 178.35 GiB total.
+
+**Re-tuning the LR is not optional; it changes the conclusion.** At a fixed 1e-3 the results turn
+sharply upward past batch 64 and read as "large batches hurt." That is mostly an artifact: the
+deficit grows with batch size precisely because 1e-3 is progressively more under-scaled. Once
+re-tuned, batch 128 and 256 both reach **1.342**, better than every run in either sweep including
+the LR sweep's 1.3787. The √batch rule predicted 2e-3 / 2.8e-3 / 4e-3 / 5.7e-3 and the runs landed
+on 2e-3 / 3e-3 / 4e-3 / 6e-3, so it was near-optimal first try at every batch size.
+
+Learning-rate probes at the large-batch end, all at the full token budget:
+
+| batch | 1e-3 | 2e-3 | 3e-3 | 4e-3 | 6e-3 | 1e-2 |
+|---|---|---|---|---|---|---|
+| 128 | 1.3767 | **1.3422** | — | — | — | — |
+| 256 | 1.4141 | — | **1.3421** | — | — | — |
+| 512 | 1.4630 | — | 1.3621 | **1.3567** | — | — |
+| 1024 | 1.5620 | — | 1.4209 | — | **1.3881** | diverged |
+
+The batch-512 optimum is genuinely flat on top (1.3621 vs 1.3567 across a 33% change in LR),
+consistent with the LR sweep's finding that within the stable band the learning rate barely
+affects final loss.
+
+**A real penalty does remain at the top end**, and it is a stability ceiling rather than
+under-tuning: batch 1024 improves monotonically with LR (1.5620 → 1.4209 → 1.3881 at 1e-3 → 3e-3 →
+6e-3) but **diverges at 1e-2**, so its optimum is bracketed and cannot reach 1.342. Past batch 256
+you cannot buy back the lost gradient steps with a larger learning rate, because stability caps how
+large it can get.
+
+**Small batches fail through two mechanisms beyond gradient noise**, both visible only in the
+monitors:
+
+1. *Clipping becomes permanent.* At batch 4, 98.8% of steps are clipped (batch 1: 100%), versus
+   0.2% at batch 16. The per-minibatch gradient norm exceeds 1.0 on essentially every step, so
+   `max_grad_norm = 1.0` acts as a batch-size-dependent learning-rate reduction that nobody asked
+   for. This is a property of the clipping threshold interacting with batch size, not of the
+   optimizer.
+2. *Weight decay is applied per step, so constant tokens is not constant regularization.* AdamW's
+   decoupled decay fires once per step, and at a fixed token budget batch 4 takes 256× more steps
+   than batch 1024. Final weight norm rises monotonically with batch size across the whole sweep
+   (767 → 2220), i.e. the small-batch runs are far more heavily regularized at nominally identical
+   settings.
+
+**Practical answer to "do we always want large batches?" — no, but the limit is higher than the
+naive sweep suggests.** Wall-clock saturates early: batch 32 → 64 → 128 takes 13 → 12 → 10 minutes,
+so past 128 larger batches buy essentially no speed while costing loss. Batch **128–256 at
+2e-3–3e-3** is the sweet spot on both axes.
+
+**Caveats.** (1) No RNG seed, so there is no run-to-run replicate anywhere in this sweep; the
+1.3422/1.3421 tie at 128/256 should be read as a tie, not a ranking. (2) Warmup was held at 200
+steps in absolute terms, which is 2% of the batch-128 run but 8% of the batch-512 run; batch 1024
+used 50. Since the LR sweep showed warmup governs usable LR, part of the batch-1024 ceiling may be
+a warmup choice rather than a batch-size effect.

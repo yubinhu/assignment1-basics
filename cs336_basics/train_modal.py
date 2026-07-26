@@ -16,13 +16,16 @@ import modal
 from cs336_basics.modal_utils import DATA_PATH, VOLUME_MOUNTS, app, build_image
 
 CHECKPOINTS = f"/root/{DATA_PATH}/checkpoints"
+# The GPU the handout quotes its 20-30 minute reference runtime against. Read at import, so it
+# cannot be a CLI flag; edit here (H100, H200, A100-80GB, ...) to switch hardware.
+GPU = "B200"
 
 
 @app.function(
     image=build_image(),
     volumes=VOLUME_MOUNTS,
     secrets=[modal.Secret.from_name("wandb-secret")],
-    gpu="H100",
+    gpu=GPU,
     timeout=12 * 60 * 60,
 )
 def train_remote(train: str, valid: str, **kwargs) -> str:

@@ -196,9 +196,15 @@ def train_llm(
     # Logged because section 7 holds it fixed while varying batch size, so it is the quantity
     # that has to match across runs rather than the step count.
     total_tokens = batch_size * max_iters * context_length
-    print(f"{num_params:,} parameters on {device}, {total_tokens:,} tokens, config {model_config}")
+    # The GPU model, not just "cuda", so throughput is comparable across local and rented hardware.
+    gpu = torch.cuda.get_device_name(device) if torch.device(device).type == "cuda" else None
+    print(f"{num_params:,} parameters on {gpu or device}, {total_tokens:,} tokens, config {model_config}")
     run_config.update(
-        model_config, device=str(device), num_parameters=num_params, total_tokens=total_tokens
+        model_config,
+        device=str(device),
+        gpu=gpu,
+        num_parameters=num_params,
+        total_tokens=total_tokens,
     )
 
     start_iter = 0

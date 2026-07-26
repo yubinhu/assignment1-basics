@@ -5,8 +5,10 @@ Every run writes two files into its checkpoint directory:
     config.json     the resolved hyperparameters, so a run is reproducible from disk alone
     metrics.jsonl   one JSON object per logged event
 
-Each metrics record carries both `step` and `wall_time` (seconds since training started), so
-loss curves can be plotted against gradient steps or wall clock.
+Each metrics record carries `step`, `tokens`, and `wall_time` (seconds since training started), so
+loss curves can be plotted against gradient steps, tokens consumed, or wall clock. `tokens` is the
+only x-axis that compares across batch sizes: section 7 holds the token budget fixed, so a batch-1
+run takes 128x as many gradient steps as a batch-128 one to see the same data.
 
 Runs also mirror to Weights and Biases by default, and the directory layout mirrors the W&B
 hierarchy: `data/checkpoints/<project>/<name>/`. --project defaults to the dataset stem, --name is
@@ -47,6 +49,10 @@ class ExperimentLogger:
         (run_dir / CONFIG_FILE).write_text(json.dumps(serializable, indent=2))
         self.metrics = (run_dir / METRICS_FILE).open("a")
 
+        # Zero when the caller logs something that is not a training run, in which case `tokens`
+        # is meaningless and stays out of the records entirely.
+        self.tokens_per_step = config.get("batch_size", 0) * config.get("context_length", 0)
+
         # On by default. Set WANDB_MODE=disabled (or offline) to opt out; a failure here
         # degrades to JSONL-only rather than taking the training run down with it.
         self.wandb = None
@@ -54,12 +60,20 @@ class ExperimentLogger:
             import wandb
 
             wandb.init(project=project_name(run_dir), name=run_dir.name, config=serializable)
+            if self.tokens_per_step:
+                # Makes tokens the default x-axis for every panel. Against gradient steps a batch
+                # size sweep plots as runs of wildly different widths that end at different places;
+                # against tokens they all span the same interval and can actually be compared.
+                wandb.define_metric("tokens")
+                wandb.define_metric("*", step_metric="tokens")
             self.wandb = wandb
         except Exception as e:
             print(f"wandb disabled ({type(e).__name__}: {e}); still logging to {run_dir / METRICS_FILE}")
 
     def log(self, step: int, **metrics) -> None:
         record = {"step": step, "wall_time": round(time.time() - self.t0, 3), **metrics}
+        if self.tokens_per_step:
+            record["tokens"] = step * self.tokens_per_step
         self.metrics.write(json.dumps(record) + "\n")
         self.metrics.flush()  # so a killed run keeps everything up to the last logged step
         if self.wandb is not None:

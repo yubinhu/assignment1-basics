@@ -120,3 +120,26 @@ and LM-head shares fall to $12.06\%$, $24.24\%$, and $1.97\%$, respectively.
 
 ### learning_rate_tuning
 1 slowly dropped loss from 21 to 11. 1e1 dropped it slowly from 20 to 0.01. 1e2 quickly dropped it to a very small number then 0 afterwards. 1e3 diverged and went to inf after a bit. 
+
+### adamw_accounting
+GPT-2 XL: ModelConfig(vocab_size=50257, context_length=1024, num_layers=48, d_model=1600, num_heads=25, d_ff=4266.666666666667)
+
+(a) peak memory, at batch_size = 1
+        parameters:      6.542 GB  (   6.093 GiB)
+         gradients:      6.542 GB  (   6.093 GiB)
+   optimizer_state:     13.084 GB  (  12.186 GiB)
+       activations:     16.357 GB  (  15.233 GiB)
+             total:     42.525 GB  (  39.605 GiB)
+  parameters: 1,635,537,600
+
+(b) peak memory as a function of batch size
+  16.357 * batch_size + 26.169 GB
+  max batch size in 80 GB: 3
+
+(c) FLOPs for one AdamW step
+  14 * num_parameters = 2.290e+10 FLOPs
+  vs. one forward pass at batch_size 1: 3.507e+12 FLOPs
+
+(d) training 400,000 steps at batch size 1024 on one H100 @ 50% MFU
+  1.077e+16 FLOPs/step
+  4,836 hours (202 days)

@@ -2,7 +2,11 @@
 
     uv run python -m cs336_basics.training_together \
         --train data/tinystories_train_ids.npy --valid data/tinystories_valid_ids.npy \
-        --vocab-size 10000 --max-iters 5000
+        --lr 1e-3
+
+Defaults are the section 7.2.1 TinyStories configuration, sized so batch_size x max_iters x
+context_length is the handout's 327,680,000 token budget. --lr is the peak (post-warmup) learning
+rate, which is the one the handout asks you to tune; --lr-min trails it at a tenth unless set.
 
 Checkpoints land in data/checkpoints/<project>/<name>/<iteration>.pt, mirroring the Weights and
 Biases hierarchy: --project defaults to the train file's stem, and --name is the run name with a
@@ -118,9 +122,9 @@ def train_llm(
     rope_theta: float = 10_000.0,  # NOT a redundant default: None disables RoPE entirely
     # optimization
     batch_size: int = 32,
-    max_iters: int = 5_000,
-    lr_max: float = 1e-3,
-    lr_min: float = 1e-4,
+    max_iters: int = 40_000,  # 327,680,000 tokens at batch_size 32, context_length 256
+    lr_max: float = 1e-3,  # the handout's "learning rate": the post-warmup peak, exposed as --lr
+    lr_min: float | None = None,  # defaults to lr_max / 10, the LLaMA/Chinchilla ratio
     warmup_iters: int = 200,
     cosine_cycle_iters: int | None = None,  # defaults to max_iters
     weight_decay: float = 0.01,
@@ -141,6 +145,11 @@ def train_llm(
     torch.set_float32_matmul_precision('high')
     if cosine_cycle_iters is None:
         cosine_cycle_iters = max_iters
+    if lr_min is None:
+        # Tied to the peak rather than absolute, so sweeping lr_max varies only its height and not
+        # the schedule's shape. A fixed lr_min would make the low end of a sweep a constant
+        # schedule, and anything under it an *increasing* one.
+        lr_min = lr_max / 10
     if resume_from is not None:
         resume_from = resolve_checkpoint(Path(resume_from))
     # The directory mirrors the W&B hierarchy: <project>/<run name>. ExperimentLogger reads both
@@ -184,8 +193,13 @@ def train_llm(
     # be exhausted after the norm pass and silently skip the rescale.
     params = list(model.parameters())
     num_params = sum(p.numel() for p in params)
-    print(f"{num_params:,} parameters on {device}, config {model_config}")
-    run_config.update(model_config, device=str(device), num_parameters=num_params)
+    # Logged because section 7 holds it fixed while varying batch size, so it is the quantity
+    # that has to match across runs rather than the step count.
+    total_tokens = batch_size * max_iters * context_length
+    print(f"{num_params:,} parameters on {device}, {total_tokens:,} tokens, config {model_config}")
+    run_config.update(
+        model_config, device=str(device), num_parameters=num_params, total_tokens=total_tokens
+    )
 
     start_iter = 0
     if resume_from is not None:
@@ -266,7 +280,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     p.add_argument("--batch-size", type=int)
     p.add_argument("--max-iters", type=int)
-    p.add_argument("--lr-max", type=float)
+    # The handout tunes a single "learning rate", which is the peak. lr_min rides along at
+    # lr_max / 10 unless overridden, so --lr is the only knob a sweep needs.
+    p.add_argument("--lr", dest="lr_max", type=float)
     p.add_argument("--lr-min", type=float)
     p.add_argument("--warmup-iters", type=int)
     p.add_argument("--cosine-cycle-iters", type=int)

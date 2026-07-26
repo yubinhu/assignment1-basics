@@ -1,8 +1,8 @@
 """Run the section 7 training loop on Modal.
 
     modal secret create wandb-secret WANDB_API_KEY=<key>     # once
-    modal run cs336_basics/train_modal.py --name baseline --max-iters 40000
-    modal run cs336_basics/train_modal.py --project sweep --name lr-3e-4 --lr-max 3e-4
+    modal run cs336_basics/train_modal.py --name baseline
+    modal run cs336_basics/train_modal.py --project sweep --name lr-3e-4 --lr 3e-4
 
 Everything the run produces (checkpoints, config.json, metrics.jsonl) lands on the
 cs336-basics-data volume under data/checkpoints/<project>/<name>-<timestamp>/, so it survives the
@@ -49,19 +49,24 @@ def main(
     valid: str = "tinystories_valid_ids.npy",
     project: str | None = None,
     name: str | None = None,
-    max_iters: int = 40_000,
-    batch_size: int = 32,
-    lr_max: float = 1e-3,
-    warmup_iters: int = 200,
-    rope_theta: float = 10_000.0,
+    max_iters: int | None = None,
+    batch_size: int | None = None,
+    lr: float | None = None,
+    warmup_iters: int | None = None,
+    rope_theta: float | None = None,
     resume_from: str | None = None,
 ):
+    """Everything defaults to None and unset flags are dropped, so train_llm owns the defaults.
+
+    Restating them here once let this entrypoint drift to a different token budget than the local
+    one; there is nothing to keep in sync now.
+    """
     kwargs = {
         "project": project,
         "name": name,
         "max_iters": max_iters,
         "batch_size": batch_size,
-        "lr_max": lr_max,
+        "lr_max": lr,
         "warmup_iters": warmup_iters,
         "rope_theta": rope_theta,
         "resume_from": resume_from,

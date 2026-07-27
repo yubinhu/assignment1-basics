@@ -273,3 +273,85 @@ so past 128 larger batches buy essentially no speed while costing loss. Batch **
 steps in absolute terms, which is 2% of the batch-128 run but 8% of the batch-512 run; batch 1024
 used 50. Since the LR sweep showed warmup governs usable LR, part of the batch-1024 ceiling may be
 a warmup choice rather than a batch-size effect.
+
+## 7.3 Ablations
+
+All ablations use the best §7.2 config (batch 128 × 10,000 steps × context 256 = 327.68M tokens,
+lr 2e-3, warmup 200) against the batch-size sweep's b128/2e-3 baseline, via `--norm {pre,post,none}`,
+`--ffn-type {swiglu,silu}`, and `--rope-theta 0` in
+[cs336_basics/training_together.py](cs336_basics/training_together.py). Curves:
+[data/curves-ablations.png](data/curves-ablations.png); ppl = exp(best val loss).
+
+| run | lr | best val | ppl | Δ vs baseline | clip% | max ‖g‖ | params |
+|---|---|---|---|---|---|---|---|
+| baseline (pre-norm, SwiGLU, RoPE) | 2e-3 | **1.3422** | 3.83 | — | 1.0% | 1.1 | 22.70M |
+| no RMSNorm | 2e-3 | **NaN @ step 1000** | — | — | 67% | 7.1e11 | 22.69M |
+| no RMSNorm | 1.5e-3 | 1.4277 | 4.17 | +0.086 | 11% | 7.2e7 | 22.69M |
+| no RMSNorm | 1e-3 | 1.4010 | 4.06 | +0.059 | 5.0% | 49 | 22.69M |
+| no RMSNorm | 3e-4 | 1.5421 | 4.67 | +0.200 | 6.0% | 55 | 22.69M |
+| post-norm | 2e-3 | 1.3699 | 3.93 | +0.028 | 1.0% | 1.1 | 22.70M |
+| NoPE | 2e-3 | 1.4066 | 4.08 | +0.064 | 1.0% | 1.1 | 22.70M |
+| SiLU FFN (d_ff 2048) | 2e-3 | 1.3584 | 3.89 | +0.016 | 1.0% | 1.4 | 22.83M |
+
+### layer_norm_ablation
+
+At the previous optimal LR the model is destroyed: gradient norms run 0.9 → inf between steps
+400–900 and the loss is NaN from step 1000 — clipping cannot save it because the *forward*
+activations explode. Lower LRs restore stability (best no-norm run: 1e-3 at 1.4010), so RMSNorm
+buys ~2× usable learning rate and is still worth +0.06 loss even at the no-norm optimum.
+
+### pre_norm_ablation
+
+Post-norm (eqs. 27–28) trains stably at this depth but sits ~0.03 above pre-norm for the whole
+run, finishing 1.3699 vs 1.3422.
+
+### no_pos_emb
+
+NoPE trains stably at 1.4066 (+0.064): the causal mask alone lets the model infer position
+implicitly, but RoPE's explicit relative positions still win consistently at context 256.
+
+### swiglu_ablation
+
+At approximately matched parameters (SiLU uses d_ff = 4·d_model = 2048 vs SwiGLU's 1344, +0.6%
+params), the gate is worth +0.016 (1.3584 vs 1.3422) — a consistent but small win, the smallest
+effect of the three ablations, matching Shazeer's framing of GLU variants as modest reliable gains.
+
+## 7.4 Running on OpenWebText
+
+### main_experiment
+
+Same architecture and step budget as the TinyStories best run, with the 32,000-entry OWT tokenizer
+(params 22.7M → 45.2M, all embeddings + LM head); the TinyStories-tuned 2e-3 transferred and beat
+a 1e-3 control. Curve: [data/curves-owt.png](data/curves-owt.png); ppl = exp(best val loss).
+
+| dataset | vocab | lr | best val loss | perplexity | uniform baseline | bits/byte |
+|---|---|---|---|---|---|---|
+| TinyStories | 10k | 2e-3 | 1.3422 | **3.83** | ln 10⁴ = 9.21 | 0.46 |
+| OpenWebText | 32k | 2e-3 | **3.9822** | **53.6** | ln 3.2·10⁴ = 10.37 | 1.22 |
+| OpenWebText | 32k | 1e-3 | 4.0364 | 56.6 | | |
+
+The raw losses are not comparable — different tokenizers over different distributions — but per
+byte (each tokenizer's measured compression) TinyStories costs 0.46 bits/byte vs 1.22 for OWT:
+web text has a far higher entropy floor, and the OWT curve is still descending at step 10,000
+while TinyStories has flattened.
+
+**Generated text** (decoder, temp 0.8, top-p 0.9, 256 tokens):
+
+> On Tuesday, the mayor announced he would be leaving the city.
+> The mayor will take action on May 8 and will come with a "large list of the 20 people that are
+> transgender," he said.
+> The mayor will have a discussion about whether transgender people should be allowed to take part
+> in the meeting, he said.
+> The city will also have a meeting with the mayor on March 15 at a cost-benefit agreement, he said.
+> "It's a city-state solution. But it's also a real issue for the city," he said.
+> "It's just not about the city and the city, or the city and the county," he added.
+> In a statement, the mayor said the city would be open to the city to discuss the question of
+> whether the city should be able to be a "renegotiation" of the city.
+> City officials said the city will be open to a long-term, but the city should not allow the
+> council to put up a vote. [...]
+
+The text is locally grammatical and has the news register (quote-attribution, datelines, even an
+"Advertisements" boilerplate artifact) but no cross-sentence coherence. Quality is worse at
+identical model and compute because at 3.98 nats/token every sample draws from a much flatter
+distribution than at 1.34, so errors compound — TinyStories is a domain this model can nearly
+master within the budget, and OpenWebText is not.

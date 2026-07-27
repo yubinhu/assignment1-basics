@@ -1,0 +1,10 @@
+[
+  {"train": "tinystories_train_ids.npy", "valid": "tinystories_valid_ids.npy", "project": "tinystories_ablations", "name": "nonorm-lr2e-3", "norm": "none", "batch_size": 128, "max_iters": 10000, "lr_max": 2e-3},
+  {"train": "tinystories_train_ids.npy", "valid": "tinystories_valid_ids.npy", "project": "tinystories_ablations", "name": "nonorm-lr1e-3", "norm": "none", "batch_size": 128, "max_iters": 10000, "lr_max": 1e-3},
+  {"train": "tinystories_train_ids.npy", "valid": "tinystories_valid_ids.npy", "project": "tinystories_ablations", "name": "nonorm-lr3e-4", "norm": "none", "batch_size": 128, "max_iters": 10000, "lr_max": 3e-4},
+  {"train": "tinystories_train_ids.npy", "valid": "tinystories_valid_ids.npy", "project": "tinystories_ablations", "name": "postnorm-lr2e-3", "norm": "post", "batch_size": 128, "max_iters": 10000, "lr_max": 2e-3},
+  {"train": "tinystories_train_ids.npy", "valid": "tinystories_valid_ids.npy", "project": "tinystories_ablations", "name": "nope-lr2e-3", "rope_theta": 0, "batch_size": 128, "max_iters": 10000, "lr_max": 2e-3},
+  {"train": "tinystories_train_ids.npy", "valid": "tinystories_valid_ids.npy", "project": "tinystories_ablations", "name": "silu-lr2e-3", "ffn_type": "silu", "batch_size": 128, "max_iters": 10000, "lr_max": 2e-3},
+  {"train": "owt_train_ids.npy", "valid": "owt_valid_ids.npy", "project": "owt_main", "name": "b128lr2e-3", "vocab_size": 32000, "batch_size": 128, "max_iters": 10000, "lr_max": 2e-3},
+  {"train": "owt_train_ids.npy", "valid": "owt_valid_ids.npy", "project": "owt_main", "name": "b128lr1e-3", "vocab_size": 32000, "batch_size": 128, "max_iters": 10000, "lr_max": 1e-3}
+]

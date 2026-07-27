@@ -35,7 +35,10 @@ from cs336_basics.transformer_lm import TransformerLM
 
 # The kwargs TransformerLM is built from; these travel with the checkpoint so a resumed
 # run rebuilds the same architecture without the caller re-passing every flag.
-MODEL_KEYS = ("vocab_size", "context_length", "d_model", "num_layers", "num_heads", "d_ff", "rope_theta")
+MODEL_KEYS = (
+    "vocab_size", "context_length", "d_model", "num_layers", "num_heads", "d_ff", "rope_theta",
+    "norm", "ffn_type",
+)
 
 
 def resolve_checkpoint(resume_from: Path) -> Path:
@@ -119,7 +122,9 @@ def train_llm(
     num_layers: int = 4,
     num_heads: int = 16,
     d_ff: int | None = None,  # PositionwiseFeedForward's default, round(8/3 * d_model / 64) * 64
-    rope_theta: float = 10_000.0,  # NOT a redundant default: None disables RoPE entirely
+    rope_theta: float = 10_000.0,  # NOT a redundant default: 0 (or None) disables RoPE entirely
+    norm: str = "pre",  # "pre" | "post" | "none", the section 7.3 layer-norm ablations
+    ffn_type: str = "swiglu",  # "swiglu" | "silu", the section 7.3 gating ablation
     # optimization
     batch_size: int = 32,
     max_iters: int = 40_000,  # 327,680,000 tokens at batch_size 32, context_length 256
@@ -143,6 +148,10 @@ def train_llm(
     device: str | None = None,  # TransformerLM's default
 ) -> TransformerLM:
     torch.set_float32_matmul_precision('high')
+    if not rope_theta:
+        # 0 means NoPE (section 7.3 ablation 2): CLI flags and the Modal entrypoint drop None
+        # as "unset", so 0 is the spellable form of "no position embeddings".
+        rope_theta = None
     if cosine_cycle_iters is None:
         cosine_cycle_iters = max_iters
     if lr_min is None:
@@ -282,7 +291,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--num-layers", type=int)
     p.add_argument("--num-heads", type=int)
     p.add_argument("--d-ff", type=int)
-    p.add_argument("--rope-theta", type=float)
+    p.add_argument("--rope-theta", type=float, help="0 disables position embeddings (NoPE)")
+    p.add_argument("--norm", choices=("pre", "post", "none"))
+    p.add_argument("--ffn-type", choices=("swiglu", "silu"))
 
     p.add_argument("--batch-size", type=int)
     p.add_argument("--max-iters", type=int)

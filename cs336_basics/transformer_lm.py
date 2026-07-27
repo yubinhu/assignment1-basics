@@ -18,6 +18,8 @@ class TransformerLM(nn.Module):
         num_heads: int,
         d_ff: int,
         rope_theta: float,
+        norm: str = "pre",  # "pre" | "post" | "none", the section 7.3 layer-norm ablations
+        ffn_type: str = "swiglu",  # "swiglu" | "silu", the section 7.3 gating ablation
         device: torch.device = None,
     ):
         super().__init__()
@@ -28,6 +30,8 @@ class TransformerLM(nn.Module):
         self.num_heads = num_heads
         self.d_ff = d_ff
         self.rope_theta = rope_theta
+        self.norm = norm
+        self.ffn_type = ffn_type
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
@@ -35,11 +39,17 @@ class TransformerLM(nn.Module):
         self.token_embeddings = Embedding(vocab_size, d_model, device=device)
         self.layers = nn.ModuleList(
             [
-                TransformerBlock(d_model, num_heads, d_ff, context_length, rope_theta, device=device)
+                TransformerBlock(
+                    d_model, num_heads, d_ff, context_length, rope_theta,
+                    device=device, norm=norm, ffn_type=ffn_type,
+                )
                 for _ in range(num_layers)
             ]
         )
-        self.ln_final = RMSNorm(d_model=d_model, device=device)
+        # Only the pre-norm architecture needs a final norm: post-norm blocks already end in one,
+        # and the no-norm ablation removes them all. Identity (not deletion) keeps the module tree
+        # stable for checkpoints and for ActivationMonitor's hook on the residual stream.
+        self.ln_final = RMSNorm(d_model=d_model, device=device) if norm == "pre" else nn.Identity()
         self.lm_head = Linear(d_model, vocab_size, device=device)
 
     def forward(

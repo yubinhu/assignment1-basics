@@ -150,7 +150,7 @@ the completed 5090 run to within 0.004 val loss and is omitted above.)
 
 ### (a) Learning curves
 
-![learning curves](data/curves-lr.png)
+![learning curves](figures/curves-lr.png)
 
 Left panel is the full range, where the three divergent runs sit in a band far above the rest.
 Right panel zooms on the four converged runs — and the point of the zoom is that they are

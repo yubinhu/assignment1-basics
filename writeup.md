@@ -172,7 +172,9 @@ probe went an order of magnitude up to bracket instability from above, since the
 information early in a sweep is a failure — a diverging run identifies itself in a few hundred
 steps. Bisecting inward gave 3e-3, and when 3e-3 diverged at warmup 200 but converged at warmup
 2000, warmup was promoted from a fixed setting to a swept axis. Four runs beat the 1.45 target;
-best is **1.3787**. Curves: [data/curves-lr.png](data/curves-lr.png).
+best is **1.3787**.
+
+![Learning-rate sweep validation curves](figures/curves-lr.png)
 
 **(b) Edge of stability.** The divergence boundary is a function of *warmup*, not of learning rate
 alone — a 10× longer warmup bought roughly 3× more usable learning rate:
@@ -220,7 +222,9 @@ as √batch from the 1e-3 anchor.
 | 1024 | 1,250 | 6e-3 | 1.3881 | 1.5620 | 7.7% | 2220 |
 | 2048 | 625 | — | **OOM** | — | — | — |
 
-Curves: [data/curves-batchsize.png](data/curves-batchsize.png). Batch 2048 is the memory limit —
+![Batch-size sweep: best run per batch size, and fixed vs re-tuned LR](figures/curves-batchsize.png)
+
+Batch 2048 is the memory limit —
 it fails allocating 19.53 GiB against a B200's 178.35 GiB total.
 
 **Re-tuning the LR is not optional; it changes the conclusion.** At a fixed 1e-3 the results turn
@@ -279,8 +283,9 @@ a warmup choice rather than a batch-size effect.
 All ablations use the best §7.2 config (batch 128 × 10,000 steps × context 256 = 327.68M tokens,
 lr 2e-3, warmup 200) against the batch-size sweep's b128/2e-3 baseline, via `--norm {pre,post,none}`,
 `--ffn-type {swiglu,silu}`, and `--rope-theta 0` in
-[cs336_basics/training_together.py](cs336_basics/training_together.py). Curves:
-[data/curves-ablations.png](data/curves-ablations.png); ppl = exp(best val loss).
+[cs336_basics/training_together.py](cs336_basics/training_together.py). ppl = exp(best val loss).
+
+![Section 7.3 ablation curves, each panel vs the baseline](figures/curves-ablations.png)
 
 | run | lr | best val | ppl | Δ vs baseline | clip% | max ‖g‖ | params |
 |---|---|---|---|---|---|---|---|
@@ -322,7 +327,9 @@ effect of the three ablations, matching Shazeer's framing of GLU variants as mod
 
 Same architecture and step budget as the TinyStories best run, with the 32,000-entry OWT tokenizer
 (params 22.7M → 45.2M, all embeddings + LM head); the TinyStories-tuned 2e-3 transferred and beat
-a 1e-3 control. Curve: [data/curves-owt.png](data/curves-owt.png); ppl = exp(best val loss).
+a 1e-3 control. ppl = exp(best val loss).
+
+![OWT vs TinyStories validation loss at identical model and step budget](figures/curves-owt.png)
 
 | dataset | vocab | lr | best val loss | perplexity | uniform baseline | bits/byte |
 |---|---|---|---|---|---|---|
